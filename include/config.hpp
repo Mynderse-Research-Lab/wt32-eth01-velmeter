@@ -10,3 +10,17 @@
 #define MQTT_SERVER "192.168.2.1"
 #define MQTT_PORT 1883
 #define MQTT_TOPIC_TEST "wt32/test"
+
+//Setting pins for encorder
+const int ENCORDER_A_PIN =  13;
+const int ENCORDER_B_PIN = 14;
+
+// Encoder properties
+const int countsPerRev = 2032;
+const int pulsesPerEncoderRevolution = 500; // Pulses per revolution of the encoder
+const float gearRatio = 15;                // Gear ratio of 10:1
+const int pulsesPerWheelRevolution = pulsesPerEncoderRevolution * gearRatio;
+
+
+
+

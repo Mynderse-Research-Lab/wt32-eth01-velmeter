@@ -33,6 +33,10 @@ void setup()
   ETH.config(local_ip, gateway, subnet);
 
   client.setServer(MQTT_SERVER, MQTT_PORT);
+
+
+
+  
 }
 
 void loop()

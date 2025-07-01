@@ -12,6 +12,8 @@ void WiFiEvent(WiFiEvent_t event);
 // Reconnect logic for MQTT
 void reconnect();
 
+//Send a  message every 5 seconds
 void sanityCheck();
 
+// Turns on the LAN8720A chip
 void enableLAN8720A();
