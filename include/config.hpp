@@ -20,7 +20,3 @@ const int countsPerRev = 2032;
 const int pulsesPerEncoderRevolution = 500; // Pulses per revolution of the encoder
 const float gearRatio = 15;                // Gear ratio of 10:1
 const int pulsesPerWheelRevolution = pulsesPerEncoderRevolution * gearRatio;
-
-
-
-
