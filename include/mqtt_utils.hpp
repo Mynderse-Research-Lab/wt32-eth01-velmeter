@@ -17,3 +17,6 @@ void sanityCheck();
 
 // Turns on the LAN8720A chip
 void enableLAN8720A();
+
+// Function to send velocity message
+void velocityMsg(float rpm, float linearSpeed, float distanceTraveled, int direction);

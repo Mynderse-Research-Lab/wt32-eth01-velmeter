@@ -1,6 +1,7 @@
 #include "mqtt_utils.hpp"
 #include <Arduino.h>
 #include "config.hpp"
+#include <velmeter_utils.hpp>
 
 extern PubSubClient client;
 
@@ -53,4 +54,26 @@ void enableLAN8720A()
 {
     pinMode(ETH_POWER_PIN, OUTPUT);
     digitalWrite(ETH_POWER_PIN, HIGH);
+}
+
+void velocityMsg(float rpm, float linearSpeed, float distanceTraveled, int direction)
+{
+    char msg[128];
+    snprintf(msg, sizeof(msg),
+            "RPM: %.2f | v: %.3f m/s | x: %.3f m | Dir: %s | CPR: %d | PC: %d",
+            rpm, linearSpeed, distanceTraveled,
+            (direction == 1 ? "Forward" : "Reverse"),
+            totalPulseCount, pulseCount);
+
+    
+    client.loop();
+    bool ok = client.publish(MQTT_TOPIC_TEST, msg);
+    if(!ok)
+    {
+        Serial.println(strlen(msg));
+        Serial.println("Failed to publish velocity message");
+    }
+
+    client.loop();
+
 }

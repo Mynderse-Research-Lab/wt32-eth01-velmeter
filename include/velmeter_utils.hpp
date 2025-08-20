@@ -1,6 +1,11 @@
 #pragma once
 
-#include <Arduino.h>
+#include <ETH.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+
+//extern PubSubClient client;
+
 
 extern volatile int direction;
 extern volatile int pulseCount;
@@ -11,3 +16,4 @@ void handleChannelA();
 
 // Interrupt function to handle channel B change
 void handleChannelB();
+

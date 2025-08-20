@@ -12,8 +12,8 @@
 #define MQTT_TOPIC_TEST "wt32/test"
 
 //Setting pins for encorder
-const int ENCORDER_A_PIN =  13;
-const int ENCORDER_B_PIN = 14;
+const int encoderPinA =  14; // IO14
+const int encoderPinB = 4; // IO4
 
 // Encoder properties
 const int countsPerRev = 2032;
