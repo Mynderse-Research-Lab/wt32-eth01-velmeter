@@ -1,22 +1,22 @@
 #pragma once
 
-#define ETH_ADDR        1
-#define ETH_POWER_PIN   16
-#define ETH_MDC_PIN     23
-#define ETH_MDIO_PIN    18
-#define ETH_TYPE        ETH_PHY_LAN8720
-#define ETH_CLK_MODE    ETH_CLOCK_GPIO17_OUT
+// #define ETH_ADDR        1
+// #define ETH_POWER_PIN   16
+// #define ETH_MDC_PIN     23
+// #define ETH_MDIO_PIN    18
+// #define ETH_TYPE        ETH_PHY_LAN8720
+// #define ETH_CLK_MODE    ETH_CLOCK_GPIO17_OUT
 
-#define MQTT_SERVER "192.168.2.1"
-#define MQTT_PORT 1883
-#define MQTT_TOPIC_TEST "wt32/test"
+// #define MQTT_SERVER "192.168.2.1"
+// #define MQTT_PORT 1883
+// #define MQTT_TOPIC_TEST "wt32/test"
 
-//Setting pins for encorder
-const int encoderPinA =  14; // IO14
-const int encoderPinB = 4; // IO4
+// //Setting pins for encorder
+// const int encoderPinA =  14; // IO14
+// const int encoderPinB = 4; // IO4
 
-// Encoder properties
-const int countsPerRev = 2032;
-const int pulsesPerEncoderRevolution = 500; // Pulses per revolution of the encoder
-const float gearRatio = 15;                // Gear ratio of 10:1
-const int pulsesPerWheelRevolution = pulsesPerEncoderRevolution * gearRatio;
+// // Encoder properties
+// const int countsPerRev = 2032;
+// const int pulsesPerEncoderRevolution = 500; // Pulses per revolution of the encoder
+// const float gearRatio = 15;                // Gear ratio of 10:1
+// const int pulsesPerWheelRevolution = pulsesPerEncoderRevolution * gearRatio;

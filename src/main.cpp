@@ -1,223 +1,263 @@
-// #include <ETH.h>
-// #include <PubSubClient.h>
-// #include "config.hpp"
-// #include "mqtt_utils.hpp"
-// #include "velmeter_utils.hpp"
-
-// // MQTT client
-// WiFiClient ethClient;
-// PubSubClient client(ethClient);
-
-// // Velocity meter
-// unsigned long lastTime = 0;      // Last time we checked pulses
-// unsigned long interval = 250; // 1 second
-// unsigned long currentTime = millis();
-// float wheelDiameterInches = 3.757; // Wheel properties
-// float wheelCircumference = (wheelDiameterInches * 0.0254) * 3.14159; // Circumference in meters
-
-// void setup()
-// {
-//   // Setting up serial comms
-//           Serial.begin(115200);
-//   delay(1000);
-//   Serial.println("Starting ETH...");
-
-//   // Setting up MQTT network
-//   enableLAN8720A();
-
-//   WiFi.onEvent(WiFiEvent);
-
-//   // Setting up ethernet comms
-//   ETH.begin(ETH_ADDR,
-//             ETH_POWER_PIN,
-//             ETH_MDC_PIN,
-//             ETH_MDIO_PIN,
-//             ETH_TYPE,
-//             ETH_CLK_MODE);
-
-//   IPAddress local_ip(192, 168, 2, 2);
-//   IPAddress gateway(192, 168, 2, 1);
-//   IPAddress subnet(255, 255, 255, 0);
-//   ETH.config(local_ip, gateway, subnet);
-
-//   client.setServer(MQTT_SERVER, MQTT_PORT);
-
-//   // Setting up Velocity meter
-//   pinMode(ENCORDER_A_PIN, INPUT);
-//   pinMode(ENCORDER_B_PIN, INPUT);
-
-//   // Attach interrupts to both encoder channels
-//   attachInterrupt(digitalPinToInterrupt(ENCORDER_A_PIN), handleChannelA, CHANGE);
-//   attachInterrupt(digitalPinToInterrupt(ENCORDER_B_PIN), handleChannelB, CHANGE);
-
-//   lastTime = millis();
-// }
-
-// void loop()
-// {
-//   // checks connection
-//   if (!client.connected())
-//   {
-//     reconnect();
-//   }
-
-//   // Maintains the connection to the broker-- call often
-//   client.loop();
-
-//   // Send a message every 5 seconds
-//   //sanityCheck();
-
-
-//   unsigned long currentTime = millis();
-//   if (currentTime - lastTime >= interval) {
-
-//     lastTime = currentTime;
-
-//     // Calculate RPM and linear speed only if there was motion
-//     float rpm = 0.0;
-//     float linearSpeed = 0.0;
-
-//     if (pulseCount != 0) {
-//       // Calculate RPM based on wheel revolutions
-//       float wheelRotations = abs(pulseCount) / float(countsPerRev);
-//       rpm = (wheelRotations / (interval / 1000.0)) * 60.0;
-
-//       // Calculate linear speed in meters per second
-//       linearSpeed = (rpm * wheelCircumference) / 60.0;  // m/s
-//     }
-    
-//     // Calculate total distance traveled for position
-//     float distanceTraveled = (totalPulseCount / float(countsPerRev)) * wheelCircumference; // meters
-   
-//     // Publish the velocity message
-//     velocityMsg(rpm, linearSpeed, distanceTraveled, direction);
-
-//     // Reset pulse count for next interval
-//     pulseCount = 0;
-  
-    
-//   }
-
-// }
-
-
-
-#include <Arduino.h>
-// #include <LiquidCrystal.h>  // you can leave it included, but it's unused
 #include <ETH.h>
-#include <PubSubClient.h>
-#include "config.hpp"
-#include "mqtt_utils.hpp"
-#include "velmeter_utils.hpp"
+#include <AsyncMqttClient.h>
+#include <Ticker.h>
 
-// MQTT client
-WiFiClient ethClient;
-PubSubClient client(ethClient);
+// -------------------- ETH + MQTT SETUP --------------------
 
-unsigned long lastTime    = 0;
+unsigned long lastPublish = 0;
 
-// const int countsPerRev = 2032;                 
-// const int pulsesPerEncoderRevolution = 500;    
-// const float gearRatio = 15.0f;
-float wheelDiameterInches = 3.757f;
-float wheelCircumference = (wheelDiameterInches * 0.0254f) * 3.14159f;
+// ---------- MQTT (Mosquitto) ----------
+#define MQTT_HOST        "192.168.2.1"
+#define MQTT_PORT        1883             // 1883 (no TLS), 8883 (TLS)
+#define MQTT_USERNAME    ""               // set to "" if anonymous
+#define MQTT_PASSWORD    ""               // set to "" if anonymous
+#define MQTT_CLIENT_ID   "esp32-ether-01"
+#define MQTT_SUB_TOPIC   "lab/inbox"
+#define MQTT_PUB_TOPIC   "lab/outbox"
+
+// Static IP (no router/DHCP)
+IPAddress local_IP(192, 168, 2, 2);   // ESP32's static IP
+IPAddress gateway(192, 168, 2, 1);    // set to PC/broker if no router
+IPAddress subnet(255, 255, 255, 0);   // subnet mask
+IPAddress dns(8, 8, 8, 8);            // DNS (not needed if using raw IPs)
+
+// ---------- Reconnect timers ----------
+Ticker mqttReconnectTimer;
+Ticker ethRetryTimer;
+
+AsyncMqttClient mqttClient;
+bool netUp = false;
+
+// ---------- MQTT callbacks ----------
+void onMqttConnect(bool sessionPresent) {
+  Serial.println("[MQTT] Connected.");
+  mqttClient.subscribe(MQTT_SUB_TOPIC, 1);
+  mqttClient.publish(MQTT_PUB_TOPIC, 1, true, "online (ethernet)");
+}
+
+void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
+  Serial.printf("[MQTT] Disconnected (%d).\n", (int)reason);
+  if (netUp) {
+    mqttReconnectTimer.once(2, []() {
+      mqttClient.connect();
+    });
+  }
+}
+
+void onMqttMessage(char* topic, char* payload,
+                   AsyncMqttClientMessageProperties properties,
+                   size_t len, size_t index, size_t total) {
+  Serial.print("[MQTT] ");
+  Serial.print(topic);
+  Serial.print(" => ");
+  for (size_t i = 0; i < len; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+// ---------- Ethernet events ----------
+void EthEvent(WiFiEvent_t event) {
+  switch (event) {
+    case ARDUINO_EVENT_ETH_START:
+      Serial.println("[ETH] start");
+      ETH.setHostname("esp32-eth");
+      break;
+    case ARDUINO_EVENT_ETH_CONNECTED:
+      Serial.println("[ETH] link up");
+      break;
+    case ARDUINO_EVENT_ETH_GOT_IP:
+      Serial.printf("[ETH] IP: %s\n", ETH.localIP().toString().c_str());
+      netUp = true;
+      mqttClient.connect();
+      break;
+    case ARDUINO_EVENT_ETH_DISCONNECTED:
+      Serial.println("[ETH] link down");
+      netUp = false;
+      mqttReconnectTimer.detach();
+      ethRetryTimer.once(2, []() {
+        ETH.begin(
+          /*phy_addr*/1, /*power*/16, /*mdc*/23, /*mdio*/18,
+          ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT
+        );
+
+        if (!ETH.config(local_IP, gateway, subnet, dns)) {
+          Serial.println("[ETH] static IP re-config FAILED");
+        } else {
+          Serial.printf("[ETH] static IP re-set: %s\n",
+                        ETH.localIP().toString().c_str());
+        }
+      });
+      break;
+    case ARDUINO_EVENT_ETH_STOP:
+      Serial.println("[ETH] stop");
+      netUp = false;
+      break;
+    default:
+      break;
+  }
+}
+
+// -------------------- ENCODER / VELOCITY SETUP --------------------
+
+// Encoder pins (avoid GPIO17 – used by ETH clock)
+const int encoderPinA = 15;  // IO15
+const int encoderPinB = 32;  // IO17
+
+// Encoder counters
+volatile int pulseCount      = 0;  // pulses in current interval
+volatile int totalPulseCount = 0;  // total pulses (for distance)
+
+// Time for velocity calculation
+unsigned long lastTime = 0;       // last time interval was processed
+
+// Encoder properties
+const int countsPerRev = 2032;  // counts per wheel revolution (from your working code)
+
+// Wheel properties
+float wheelDiameterInches = 3.757;
+float wheelCircumference  = (wheelDiameterInches * 0.0254f) * 3.14159f; // meters
+
+// Direction: +1 for forward, -1 for reverse
+volatile int direction = 1;
+
+// Interrupt function to handle channel A change
+void IRAM_ATTR handleChannelA() {
+  // Determine direction by checking the state of channel B
+  if (digitalRead(encoderPinA) == digitalRead(encoderPinB)) {
+    direction = 1;   // Forward
+  } else {
+    direction = -1;  // Reverse
+  }
+
+  pulseCount      += direction;
+  totalPulseCount += direction;
+}
+
+// Interrupt function to handle channel B change
+void IRAM_ATTR handleChannelB() {
+  // Determine direction by checking the state of channel A
+  if (digitalRead(encoderPinA) != digitalRead(encoderPinB)) {
+    direction = 1;   // Forward
+  } else {
+    direction = -1;  // Reverse
+  }
+
+  pulseCount      += direction;
+  totalPulseCount += direction;
+}
+
+// -------------------- SETUP --------------------
 
 void setup() {
-  // Setting up serial comms
   Serial.begin(115200);
-  delay(1000);
-  Serial.println("Starting ETH...");
 
-  // Setting up MQTT network
-  enableLAN8720A();
+  // ETH event hook
+  WiFi.onEvent(EthEvent);
 
-  WiFi.onEvent(WiFiEvent);
+  // MQTT setup
+  mqttClient.onConnect(onMqttConnect);
+  mqttClient.onDisconnect(onMqttDisconnect);
+  mqttClient.onMessage(onMqttMessage);
+  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  if (strlen(MQTT_USERNAME)) {
+    mqttClient.setCredentials(MQTT_USERNAME, MQTT_PASSWORD);
+  }
+  mqttClient.setClientId(MQTT_CLIENT_ID);
+  mqttClient.setKeepAlive(30);   // seconds
+  mqttClient.setCleanSession(true);
+  mqttClient.setWill(MQTT_PUB_TOPIC, 1, true, "offline");
 
-  // Setting up ethernet comms
-  ETH.begin(ETH_ADDR,
-            ETH_POWER_PIN,
-            ETH_MDC_PIN,
-            ETH_MDIO_PIN,
-            ETH_TYPE,
-            ETH_CLK_MODE);
+  // Start Ethernet (WT32-ETH01 / LAN8720 typical pins/clock)
+  ETH.begin(
+    /*phy_addr*/1, /*power*/16, /*mdc*/23, /*mdio*/18,
+    ETH_PHY_LAN8720, ETH_CLOCK_GPIO17_OUT
+  );
 
-  IPAddress local_ip(192, 168, 2, 2);
-  IPAddress gateway(192, 168, 2, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  ETH.config(local_ip, gateway, subnet);
+  // apply static IP right after begin
+  delay(50);
+  if (!ETH.config(local_IP, gateway, subnet, dns)) {
+    Serial.println("[ETH] static IP config FAILED");
+  } else {
+    Serial.printf("[ETH] static IP set: %s\n",
+                  ETH.localIP().toString().c_str());
+  }
 
-  ethClient.setNoDelay(true);    // smooth out TCP (reduces burstiness)
-  client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setBufferSize(1024);    // increase if your payloads are bigger
-  client.setKeepAlive(15);       // seconds
-  client.setSocketTimeout(2);    // seconds
+  // ------- Encoder setup -------
+  pinMode(encoderPinA, INPUT_PULLUP);
+  pinMode(encoderPinB, INPUT_PULLUP);
 
-  // Setting up Velocity meter
-  pinMode(encoderPinA, INPUT);
-  pinMode(encoderPinB, INPUT);
-
-  // Attach interrupts to both encoder channels
   attachInterrupt(digitalPinToInterrupt(encoderPinA), handleChannelA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), handleChannelB, CHANGE);
-
 
   lastTime = millis();
 }
 
+// -------------------- LOOP --------------------
+
 void loop() {
-
-  // checks connection
-  if (!client.connected())
-  {
-    reconnect();
-  }
-
-  // Maintains the connection to the broker-- call often
-  client.loop();
-
-
-  // Define interval to calculate speed (e.g., every 1 second)
-  unsigned long interval = 250; // 1 second
+  // Interval for velocity calculation
+  const unsigned long interval = 250;  // 0.25 seconds
   unsigned long currentTime = millis();
   
   if (currentTime - lastTime >= interval) {
-    // Calculate RPM and linear speed only if there was motion
-    float rpm = 0.0;
-    float linearSpeed = 0.0;
+    float rpm         = 0.0f;
+    float linearSpeed = 0.0f;  // m/s
 
-    if (pulseCount != 0) {
-      // Calculate RPM based on wheel revolutions
-      float wheelRotations = abs(pulseCount) / float(countsPerRev);
-      rpm = (wheelRotations / (interval / 1000.0)) * 60.0;
+    // Safely copy and reset pulseCount
+    int pulsesSnapshot;
+    noInterrupts();
+    pulsesSnapshot = pulseCount;
+    pulseCount     = 0;
+    interrupts();
 
-      // Calculate linear speed in meters per second
-      linearSpeed = (rpm * wheelCircumference) / 60.0;  // m/s
+    if (pulsesSnapshot != 0) {
+      float dt = interval / 1000.0f;  // seconds
+
+      // Wheel rotations in this interval
+      float wheelRotations = fabs((float)pulsesSnapshot) / (float)countsPerRev;
+
+      // RPM (unsigned)
+      rpm = (wheelRotations / dt) * 60.0f;
+
+      // Linear speed in m/s (unsigned)
+      linearSpeed = (rpm * wheelCircumference) / 60.0f;
+
+      // Apply direction sign
+      if (direction < 0) {
+        rpm         = -rpm;
+        linearSpeed = -linearSpeed;
+      }
     }
-    
-    // Calculate total distance traveled for position
-    float distanceTraveled = (totalPulseCount / float(countsPerRev)) * wheelCircumference; // meters
-    
-    // Print RPM, linear speed, and position (distance traveled) to Serial Monitor
-    // Serial.print("RPM: ");
-    // Serial.print(rpm);
-    // Serial.print(" | Linear Speed: ");
-    // Serial.print(linearSpeed);
-    // Serial.print(" m/s | Position: ");
-    // Serial.print(distanceTraveled);
-    // Serial.print(" CPR: ");
-    // Serial.print(totalPulseCount);
-    // Serial.print(" m | Direction: ");
-    // Serial.println(direction == 1 ? "Forward " : "Reverse ");
 
-    // Publish the velocity message
-    velocityMsg(rpm, linearSpeed, distanceTraveled, direction);
-    // Maintains the connection to the broker-- call often
-    client.loop();
-    int room = ethClient.availableForWrite();
-    Serial.print("Available for write: ");
+    // Total distance traveled (meters)
+    float distanceTraveled =
+        ( (float)totalPulseCount / (float)countsPerRev ) * wheelCircumference;
 
-   // Reset pulse count for next interval
-    pulseCount = 0;
+    // ---- Print to Serial ----
+    Serial.print("RPM: ");
+    Serial.print(rpm);
+    Serial.print(" | Linear Speed: ");
+    Serial.print(linearSpeed);
+    Serial.print(" m/s | Position: ");
+    Serial.print(distanceTraveled);
+    Serial.print(" m | CPR: ");
+    Serial.print(totalPulseCount);
+    Serial.print(" | Direction: ");
+    Serial.println(direction == 1 ? "Forward" : "Reverse");
+
+    // ---- Optional: publish over MQTT ----
+    if (mqttClient.connected()) {
+      char msg[160];
+      snprintf(msg, sizeof(msg),
+               "{\"rpm\":%.2f,\"mps\":%.4f,\"distance\":%.3f,\"dir\":\"%s\"}",
+               rpm,
+               linearSpeed,
+               distanceTraveled,
+               (direction > 0 ? "FWD" : "REV"));
+      mqttClient.publish("lab/wheel_velocity", 0, false, msg);
+    }
+
     lastTime = currentTime;
   }
 }
