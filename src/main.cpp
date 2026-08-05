@@ -1,6 +1,9 @@
 #include <ETH.h>
 #include <AsyncMqttClient.h>
 #include <Ticker.h>
+#include <Wire.h>
+#include <Arduino.h>
+#include <LiquidCrystal_I2C.h>
 
 // -------------------- ETH + MQTT SETUP --------------------
 
@@ -27,6 +30,8 @@ Ticker ethRetryTimer;
 
 AsyncMqttClient mqttClient;
 bool netUp = false;
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // ---------- MQTT callbacks ----------
 void onMqttConnect(bool sessionPresent) {
@@ -101,8 +106,8 @@ void EthEvent(WiFiEvent_t event) {
 // -------------------- ENCODER / VELOCITY SETUP --------------------
 
 // Encoder pins (avoid GPIO17 – used by ETH clock)
-const int encoderPinA = 15;  // IO15
-const int encoderPinB = 32;  // IO17
+const int encoderPinA = 36;//15;  // IO15
+const int encoderPinB = 39;//32;  // IO17
 
 // Encoder counters
 volatile int pulseCount      = 0;  // pulses in current interval
@@ -152,6 +157,15 @@ void IRAM_ATTR handleChannelB() {
 void setup() {
   Serial.begin(115200);
 
+  //setup LCD display
+  Wire.begin(4,14); //SDA = IO4, SCL = IO14
+
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("ready");
+
   // ETH event hook
   WiFi.onEvent(EthEvent);
 
@@ -184,8 +198,8 @@ void setup() {
   }
 
   // ------- Encoder setup -------
-  pinMode(encoderPinA, INPUT_PULLUP);
-  pinMode(encoderPinB, INPUT_PULLUP);
+  pinMode(encoderPinA, INPUT);//_PULLUP);
+  pinMode(encoderPinB, INPUT);//_PULLUP);
 
   attachInterrupt(digitalPinToInterrupt(encoderPinA), handleChannelA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), handleChannelB, CHANGE);
@@ -245,7 +259,13 @@ void loop() {
     Serial.print(totalPulseCount);
     Serial.print(" | Direction: ");
     Serial.println(direction == 1 ? "Forward" : "Reverse");
-
+    lcd.setCursor(0,0);
+    lcd.print("Speed:");
+    lcd.setCursor(0,1);
+    lcd.print(linearSpeed,2);
+    lcd.print(" m/s     ");
+    //lcd.println("RPM: ", rpm);
+    //lcd.print("Direction: ", direction == 1 ? "Forward" : "Reverse");
     // ---- Optional: publish over MQTT ----
     if (mqttClient.connected()) {
       char msg[160];
