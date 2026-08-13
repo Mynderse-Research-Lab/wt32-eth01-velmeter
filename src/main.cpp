@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
+#include <ESP32Encoder.h>
 
 // -------------------- ETH + MQTT SETUP --------------------
 
@@ -108,16 +109,21 @@ void EthEvent(WiFiEvent_t event) {
 // Encoder pins (avoid GPIO17 – used by ETH clock)
 const int encoderPinA = 36;//15;  // IO15
 const int encoderPinB = 39;//32;  // IO17
+constexpr int encoderPINA=36;
+constexpr int encoderPINB=39;
+
+ESP32Encoder encoder;
 
 // Encoder counters
 volatile int pulseCount      = 0;  // pulses in current interval
 volatile int totalPulseCount = 0;  // total pulses (for distance)
+volatile int totalPulsesSnapshot = 0;
 
 // Time for velocity calculation
 unsigned long lastTime = 0;       // last time interval was processed
 
 // Encoder properties
-const int countsPerRev = 2032;  // counts per wheel revolution (from your working code)
+const int countsPerRev = 500*4;//500;//2032;  // counts per wheel revolution (from your working code) //pulses per rev in quadrature
 
 // Wheel properties
 float wheelDiameterInches = 3.757;
@@ -127,6 +133,7 @@ float wheelCircumference  = (wheelDiameterInches * 0.0254f) * 3.14159f; // meter
 volatile int direction = 1;
 
 // Interrupt function to handle channel A change
+/*
 void IRAM_ATTR handleChannelA() {
   // Determine direction by checking the state of channel B
   if (digitalRead(encoderPinA) == digitalRead(encoderPinB)) {
@@ -138,8 +145,10 @@ void IRAM_ATTR handleChannelA() {
   pulseCount      += direction;
   totalPulseCount += direction;
 }
+  */
 
 // Interrupt function to handle channel B change
+/*
 void IRAM_ATTR handleChannelB() {
   // Determine direction by checking the state of channel A
   if (digitalRead(encoderPinA) != digitalRead(encoderPinB)) {
@@ -151,6 +160,12 @@ void IRAM_ATTR handleChannelB() {
   pulseCount      += direction;
   totalPulseCount += direction;
 }
+  */
+/*
+void IRAM_ATTR handleChannelA(){
+  pulseCount++;
+  totalPulseCount++;
+}*/
 
 // -------------------- SETUP --------------------
 
@@ -201,9 +216,13 @@ void setup() {
   pinMode(encoderPinA, INPUT);//_PULLUP);
   pinMode(encoderPinB, INPUT);//_PULLUP);
 
-  attachInterrupt(digitalPinToInterrupt(encoderPinA), handleChannelA, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(encoderPinB), handleChannelB, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(encoderPinA), handleChannelA, CHANGE);
+  //attachInterrupt(digitalPinToInterrupt(encoderPinB), handleChannelB, CHANGE);
 
+  ESP32Encoder::useInternalWeakPullResistors = puType::none; //GPIO 36 and 39 do not have internal pull-ups (input only)
+
+  encoder.attachFullQuad(encoderPinA, encoderPinB);
+  encoder.clearCount();
   lastTime = millis();
 }
 
@@ -213,20 +232,38 @@ void loop() {
   // Interval for velocity calculation
   const unsigned long interval = 250;  // 0.25 seconds
   unsigned long currentTime = millis();
+
+  static int64_t previousCount = 0;
+  static uint32_t previousTime = millis();
+  constexpr float wheelCircumference = 0.300f;
+
+  currentTime = millis();
+
   
-  if (currentTime - lastTime >= interval) {
-    float rpm         = 0.0f;
-    float linearSpeed = 0.0f;  // m/s
+  if (currentTime - previousTime >= interval) {
+    int64_t currentCount = encoder.getCount();
+    int64_t countChange = currentCount - previousCount;
+    float elapsedSeconds = (currentTime-previousTime) / 1000.0f;
+
+    float revolutions = static_cast<float>(countChange) / static_cast<float>(countsPerRev);
+    float rpm = revolutions * 60.0f / elapsedSeconds;
+    float linearSpeed = revolutions * wheelCircumference / elapsedSeconds;
+    float distanceTraveled = static_cast<float>(currentCount) / static_cast<float>(countsPerRev) * wheelCircumference;
+    //float rpm         = 0.0f;
+    //float linearSpeed = 0.0f;  // m/s
 
     // Safely copy and reset pulseCount
-    int pulsesSnapshot;
+    /*int pulsesSnapshot;
+    int totalPulsesSnapshot;
     noInterrupts();
     pulsesSnapshot = pulseCount;
+    totalPulsesSnapshot = totalPulseCount;
     pulseCount     = 0;
-    interrupts();
-
+    interrupts();*/
+    /*
     if (pulsesSnapshot != 0) {
-      float dt = interval / 1000.0f;  // seconds
+      float dt = (currentTime-lastTime) / 1000.0f;  // seconds //programming guide, add to repo with doc folder
+      //use encoder programming instead of interrupts
 
       // Wheel rotations in this interval
       float wheelRotations = fabs((float)pulsesSnapshot) / (float)countsPerRev;
@@ -244,40 +281,73 @@ void loop() {
       }
     }
 
-    // Total distance traveled (meters)
-    float distanceTraveled =
-        ( (float)totalPulseCount / (float)countsPerRev ) * wheelCircumference;
+    if (pulsesSnapshot >0){
+      float dt= (currentTime-lastTime) / 1000.0f;
+      float wheelRotations = (float)pulsesSnapshot / (float)countsPerRev;
 
+      rpm = (wheelRotations / dt) * 60.0f;
+      linearSpeed = (rpm*wheelCircumference) / 60.0f;
+    }*/
+
+    // Total distance traveled (meters)
+    /*float distanceTraveled =
+        ( (float)totalPulsesSnapshot / (float)countsPerRev ) * wheelCircumference;
+  */
     // ---- Print to Serial ----
-    Serial.print("RPM: ");
+    /*Serial.print("RPM: ");
     Serial.print(rpm);
     Serial.print(" | Linear Speed: ");
     Serial.print(linearSpeed);
     Serial.print(" m/s | Position: ");
     Serial.print(distanceTraveled);
     Serial.print(" m | CPR: ");
-    Serial.print(totalPulseCount);
-    Serial.print(" | Direction: ");
-    Serial.println(direction == 1 ? "Forward" : "Reverse");
+    Serial.print(totalPulsesSnapshot);*/
+
+    //Serial.print("A: ");
+    //Serial.print();
+    Serial.printf("A: %d B: %d\n", digitalRead(encoderPinA), digitalRead(encoderPinB));
+    Serial.print("Count: ");
+    Serial.print(currentCount);
+    Serial.print(" | RPM: ");
+    Serial.print(rpm);
+    Serial.print(" | Speed: ");
+    Serial.print(linearSpeed);
+    //Serial.print(" | Direction: ");
+    //Serial.println(direction == 1 ? "Forward" : "Reverse");
+    Serial.println();
     lcd.setCursor(0,0);
-    lcd.print("Speed:");
+    lcd.print("Position:");
     lcd.setCursor(0,1);
-    lcd.print(linearSpeed,2);
-    lcd.print(" m/s     ");
+    lcd.print(distanceTraveled,2);
+    lcd.print(" m     ");
+    
+   /*
+    lcd.print("Pulses:");
+    lcd.print(pulsesSnapshot);
+    lcd.print("     ");
+    lcd.setCursor(0,1);
+    lcd.print(linearSpeed, 4);
+    lcd.print(" m/s     ");*/
     //lcd.println("RPM: ", rpm);
     //lcd.print("Direction: ", direction == 1 ? "Forward" : "Reverse");
     // ---- Optional: publish over MQTT ----
     if (mqttClient.connected()) {
       char msg[160];
-      snprintf(msg, sizeof(msg),
+      /*snprintf(msg, sizeof(msg),
                "{\"rpm\":%.2f,\"mps\":%.4f,\"distance\":%.3f,\"dir\":\"%s\"}",
                rpm,
                linearSpeed,
                distanceTraveled,
-               (direction > 0 ? "FWD" : "REV"));
+               (direction > 0 ? "FWD" : "REV"));*/
+      snprintf(msg, sizeof(msg),
+              "{\"rpm\":%.2f,\"mps\":%.4f,\"distance\":%.3f}",
+              rpm,
+              linearSpeed,
+              distanceTraveled);
       mqttClient.publish("lab/wheel_velocity", 0, false, msg);
     }
-
+    previousCount = currentCount;
+    previousTime = currentTime;
     lastTime = currentTime;
   }
 }
