@@ -1,0 +1,7 @@
+Espressif ESP32 Programming guide:
+
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html
+
+Pulse Counter (PCNT) documentation:
+
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/pcnt.html
