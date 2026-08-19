@@ -127,7 +127,9 @@ const int countsPerRev = 500*4;//500;//2032;  // counts per wheel revolution (fr
 
 // Wheel properties
 float wheelDiameterInches = 3.757;
-float wheelCircumference  = (wheelDiameterInches * 0.0254f) * 3.14159f; // meters
+float wheelDiameterMeters = wheelDiameterInches / 39.37f;
+float wheelCircumference  = 0.299708;//wheelDiameterMeters * 3.14159f; // meters
+
 
 // Direction: +1 for forward, -1 for reverse
 volatile int direction = 1;
@@ -220,7 +222,7 @@ void setup() {
   //attachInterrupt(digitalPinToInterrupt(encoderPinB), handleChannelB, CHANGE);
 
   ESP32Encoder::useInternalWeakPullResistors = puType::none; //GPIO 36 and 39 do not have internal pull-ups (input only)
-
+  //pcnt_unit_config_t::intr_priority 
   encoder.attachFullQuad(encoderPinA, encoderPinB);
   encoder.clearCount();
   lastTime = millis();
@@ -235,20 +237,20 @@ void loop() {
 
   static int64_t previousCount = 0;
   static uint32_t previousTime = millis();
-  constexpr float wheelCircumference = 0.300f;
+  //constexpr float wheelCircumference = 0.300f;
 
-  currentTime = millis();
-
+  //currentTime = millis();
+  //float distanceTraveled = (static_cast<float>(encoder.getCount()) / static_cast<float>(countsPerRev)) * wheelCircumference;
   
-  if (currentTime - previousTime >= interval) {
+  if (millis() - previousTime >= interval) {
     int64_t currentCount = encoder.getCount();
-    int64_t countChange = currentCount - previousCount;
-    float elapsedSeconds = (currentTime-previousTime) / 1000.0f;
+    //int64_t countChange = currentCount - previousCount;
+    //float elapsedSeconds = (currentTime-previousTime) / 1000.0f;
 
-    float revolutions = static_cast<float>(countChange) / static_cast<float>(countsPerRev);
-    float rpm = revolutions * 60.0f / elapsedSeconds;
-    float linearSpeed = revolutions * wheelCircumference / elapsedSeconds;
-    float distanceTraveled = static_cast<float>(currentCount) / static_cast<float>(countsPerRev) * wheelCircumference;
+    float revolutions = static_cast<float>(encoder.getCount() - previousCount) / static_cast<float>(countsPerRev);
+    float rpm = revolutions * 60.0f / (millis()-previousTime);// / 1000.0f;
+    float linearSpeed = revolutions * wheelCircumference / (millis()-previousTime) / 1000.0f;
+    float distanceTraveled = (static_cast<float>(encoder.getCount()) / static_cast<float>(countsPerRev)) * wheelCircumference;
     //float rpm         = 0.0f;
     //float linearSpeed = 0.0f;  // m/s
 
@@ -305,16 +307,17 @@ void loop() {
 
     //Serial.print("A: ");
     //Serial.print();
-    Serial.printf("A: %d B: %d\n", digitalRead(encoderPinA), digitalRead(encoderPinB));
+    /*Serial.printf("A: %d B: %d\n", digitalRead(encoderPinA), digitalRead(encoderPinB));
+    */
     Serial.print("Count: ");
-    Serial.print(currentCount);
-    Serial.print(" | RPM: ");
+    Serial.println(currentCount);
+    /*Serial.print(" | RPM: ");
     Serial.print(rpm);
     Serial.print(" | Speed: ");
     Serial.print(linearSpeed);
     //Serial.print(" | Direction: ");
     //Serial.println(direction == 1 ? "Forward" : "Reverse");
-    Serial.println();
+    Serial.println();*/
     lcd.setCursor(0,0);
     lcd.print("Position:");
     lcd.setCursor(0,1);
@@ -331,14 +334,14 @@ void loop() {
     //lcd.println("RPM: ", rpm);
     //lcd.print("Direction: ", direction == 1 ? "Forward" : "Reverse");
     // ---- Optional: publish over MQTT ----
-    if (mqttClient.connected()) {
+    /*if (mqttClient.connected()) {
       char msg[160];
       /*snprintf(msg, sizeof(msg),
                "{\"rpm\":%.2f,\"mps\":%.4f,\"distance\":%.3f,\"dir\":\"%s\"}",
                rpm,
                linearSpeed,
                distanceTraveled,
-               (direction > 0 ? "FWD" : "REV"));*/
+               (direction > 0 ? "FWD" : "REV"));
       snprintf(msg, sizeof(msg),
               "{\"rpm\":%.2f,\"mps\":%.4f,\"distance\":%.3f}",
               rpm,
@@ -346,8 +349,11 @@ void loop() {
               distanceTraveled);
       mqttClient.publish("lab/wheel_velocity", 0, false, msg);
     }
-    previousCount = currentCount;
-    previousTime = currentTime;
-    lastTime = currentTime;
+    */
+  previousCount = currentCount;
+  previousTime = currentTime;
+  lastTime = currentTime;
   }
+
 }
+
