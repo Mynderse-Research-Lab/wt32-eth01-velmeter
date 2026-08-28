@@ -5,6 +5,9 @@
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
 #include <ESP32Encoder.h>
+#include "CellNetL2.h"
+#include "EspEthL2Transport.h"
+#include "EthernetLink.h"
 
 // -------------------- ETH + MQTT SETUP --------------------
 
@@ -134,40 +137,6 @@ float wheelCircumference  = 0.299708;//wheelDiameterMeters * 3.14159f; // meters
 // Direction: +1 for forward, -1 for reverse
 volatile int direction = 1;
 
-// Interrupt function to handle channel A change
-/*
-void IRAM_ATTR handleChannelA() {
-  // Determine direction by checking the state of channel B
-  if (digitalRead(encoderPinA) == digitalRead(encoderPinB)) {
-    direction = 1;   // Forward
-  } else {
-    direction = -1;  // Reverse
-  }
-
-  pulseCount      += direction;
-  totalPulseCount += direction;
-}
-  */
-
-// Interrupt function to handle channel B change
-/*
-void IRAM_ATTR handleChannelB() {
-  // Determine direction by checking the state of channel A
-  if (digitalRead(encoderPinA) != digitalRead(encoderPinB)) {
-    direction = 1;   // Forward
-  } else {
-    direction = -1;  // Reverse
-  }
-
-  pulseCount      += direction;
-  totalPulseCount += direction;
-}
-  */
-/*
-void IRAM_ATTR handleChannelA(){
-  pulseCount++;
-  totalPulseCount++;
-}*/
 
 // -------------------- SETUP --------------------
 
@@ -218,9 +187,6 @@ void setup() {
   pinMode(encoderPinA, INPUT);//_PULLUP);
   pinMode(encoderPinB, INPUT);//_PULLUP);
 
-  //attachInterrupt(digitalPinToInterrupt(encoderPinA), handleChannelA, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(encoderPinB), handleChannelB, CHANGE);
-
   ESP32Encoder::useInternalWeakPullResistors = puType::none; //GPIO 36 and 39 do not have internal pull-ups (input only)
   //pcnt_unit_config_t::intr_priority 
   encoder.attachFullQuad(encoderPinA, encoderPinB);
@@ -254,47 +220,6 @@ void loop() {
     //float rpm         = 0.0f;
     //float linearSpeed = 0.0f;  // m/s
 
-    // Safely copy and reset pulseCount
-    /*int pulsesSnapshot;
-    int totalPulsesSnapshot;
-    noInterrupts();
-    pulsesSnapshot = pulseCount;
-    totalPulsesSnapshot = totalPulseCount;
-    pulseCount     = 0;
-    interrupts();*/
-    /*
-    if (pulsesSnapshot != 0) {
-      float dt = (currentTime-lastTime) / 1000.0f;  // seconds //programming guide, add to repo with doc folder
-      //use encoder programming instead of interrupts
-
-      // Wheel rotations in this interval
-      float wheelRotations = fabs((float)pulsesSnapshot) / (float)countsPerRev;
-
-      // RPM (unsigned)
-      rpm = (wheelRotations / dt) * 60.0f;
-
-      // Linear speed in m/s (unsigned)
-      linearSpeed = (rpm * wheelCircumference) / 60.0f;
-
-      // Apply direction sign
-      if (direction < 0) {
-        rpm         = -rpm;
-        linearSpeed = -linearSpeed;
-      }
-    }
-
-    if (pulsesSnapshot >0){
-      float dt= (currentTime-lastTime) / 1000.0f;
-      float wheelRotations = (float)pulsesSnapshot / (float)countsPerRev;
-
-      rpm = (wheelRotations / dt) * 60.0f;
-      linearSpeed = (rpm*wheelCircumference) / 60.0f;
-    }*/
-
-    // Total distance traveled (meters)
-    /*float distanceTraveled =
-        ( (float)totalPulsesSnapshot / (float)countsPerRev ) * wheelCircumference;
-  */
     // ---- Print to Serial ----
     /*Serial.print("RPM: ");
     Serial.print(rpm);
@@ -307,10 +232,12 @@ void loop() {
 
     //Serial.print("A: ");
     //Serial.print();
-    /*Serial.printf("A: %d B: %d\n", digitalRead(encoderPinA), digitalRead(encoderPinB));
-    */
+    
+    Serial.printf("A: %d B: %d\n", digitalRead(encoderPinA), digitalRead(encoderPinB));
+    
     Serial.print("Count: ");
     Serial.println(currentCount);
+
     /*Serial.print(" | RPM: ");
     Serial.print(rpm);
     Serial.print(" | Speed: ");
@@ -334,9 +261,9 @@ void loop() {
     //lcd.println("RPM: ", rpm);
     //lcd.print("Direction: ", direction == 1 ? "Forward" : "Reverse");
     // ---- Optional: publish over MQTT ----
-    /*if (mqttClient.connected()) {
+    if (mqttClient.connected()) {
       char msg[160];
-      /*snprintf(msg, sizeof(msg),
+      snprintf(msg, sizeof(msg),
                "{\"rpm\":%.2f,\"mps\":%.4f,\"distance\":%.3f,\"dir\":\"%s\"}",
                rpm,
                linearSpeed,
@@ -349,7 +276,7 @@ void loop() {
               distanceTraveled);
       mqttClient.publish("lab/wheel_velocity", 0, false, msg);
     }
-    */
+    
   previousCount = currentCount;
   previousTime = currentTime;
   lastTime = currentTime;
