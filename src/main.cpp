@@ -23,7 +23,7 @@ static CellNet::EspEthL2Transport s_l2_transport;
 static CellNet::CellNetL2Node s_l2_node(s_l2_transport, CellNodeId::CONVEYOR);
 
 static bool cellNetReady = false;
-
+int print_statement_counter=0;
 
 
 // -------------------- ENCODER / VELOCITY SETUP --------------------
@@ -94,7 +94,7 @@ void setup() {
   }
   Serial.println("[CellNetL2] Waiting for Link");
   if(!s_eth_link.waitForUp(5000)){
-    //Serial.println("[CellNetL2] Link is not ready");
+    Serial.println("[CellNetL2] Link is not ready");
     /*lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("No ETH Link");
@@ -104,7 +104,7 @@ void setup() {
   }
   s_l2_transport.attachEthHandle(s_eth_link.getEthHandle());
   if (!s_l2_node.begin()) {
-    //Serial.println("[CellNetL2] Node initialization failed");
+    Serial.println("[CellNetL2] Node initialization failed");
     /*lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("CellNet failed");
@@ -113,7 +113,7 @@ void setup() {
     return;
   }
   cellNetReady = true;
-  //Serial.println("[CellNetl2] Conveyor node 0x02 ready");
+  Serial.println("[CellNetl2] Conveyor node 0x02 ready");
   /*lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Network Ready");
@@ -206,7 +206,16 @@ void loop() {
     //bool sent = false;
     float speedMmS = linearSpeed *1000.0f; //convert speed from m/s to mm/s?
     if (cellNetReady){
+
       bool sent = s_l2_node.sendConveyorSpeed(speedMmS, distanceTraveled, currentCount);
+      //print_statement_counter++;
+      if (print_statement_counter%4 == 0)
+      {
+        if (DoSerialPrint){
+        Serial.println("[CellNetL2] message sent!");
+        }
+      }
+      print_statement_counter++;
     }
     if(!sent && DoSerialPrint){
       Serial.println("[CellNetL2] CONVEYOR_SPEED send failure");
