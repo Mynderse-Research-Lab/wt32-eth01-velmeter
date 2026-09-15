@@ -136,26 +136,29 @@ void app_main(){
 }*/
 // -------------------- LOOP --------------------
 
+
+static uint32_t previousTime = millis();
+
 void loop() {
   // Interval for velocity calculation
   const unsigned long interval = 250;  // 0.25 seconds
   unsigned long currentTime = millis();
 
   static int64_t previousCount = 0;
-  static uint32_t previousTime = millis();
+  //static uint32_t previousTime = millis();
   //constexpr float wheelCircumference = 0.300f;
 
-  //currentTime = millis();
+  currentTime = millis();
   //float distanceTraveled = (static_cast<float>(encoder.getCount()) / static_cast<float>(countsPerRev)) * wheelCircumference;
   
   if (millis() - previousTime >= interval) {
     int64_t currentCount = encoder.getCount();
     //int64_t countChange = currentCount - previousCount;
-    //float elapsedSeconds = (currentTime-previousTime) / 1000.0f;
-
+    float elapsedMSeconds = (currentTime-previousTime);
+    float elapsedSec = elapsedMSeconds / 1000.0f;
     float revolutions = static_cast<float>(encoder.getCount() - previousCount) / static_cast<float>(countsPerRev);
     float rpm = revolutions * 60.0f / (millis()-previousTime);// / 1000.0f;
-    float linearSpeed = revolutions * wheelCircumference / (millis()-previousTime); /// 1000.0f;
+    float linearSpeed =  ((revolutions * wheelCircumference) / (elapsedSec)); /// 1000.0f;
     float distanceTraveled = (static_cast<float>(encoder.getCount()) / static_cast<float>(countsPerRev)) * wheelCircumference;
     //float rpm         = 0.0f;
     //float linearSpeed = 0.0f;  // m/s
@@ -175,9 +178,14 @@ void loop() {
     
     if (DoSerialPrint) {
       Serial.printf("A: %d B: %d\n", digitalRead(encoderPinA), digitalRead(encoderPinB));
-    
-      Serial.print("Count: ");
+      Serial.print("  Revolutions: ");
+      Serial.print(revolutions);
+      Serial.print("  Prev Count: ");
+      Serial.print(previousCount);
+      Serial.print("  Count: ");
       Serial.println(currentCount);
+      Serial.print("  Speed: ");
+      Serial.print(linearSpeed);
     }
 
     /*Serial.print(" | RPM: ");
@@ -188,10 +196,10 @@ void loop() {
     //Serial.println(direction == 1 ? "Forward" : "Reverse");
     Serial.println();*/
     lcd.setCursor(0,0);
-    lcd.print("Position:");
+    lcd.print("Speed:");
     lcd.setCursor(0,1);
-    lcd.print(distanceTraveled,2);
-    lcd.print(" m     ");
+    lcd.print(linearSpeed,2);
+    lcd.print(" m/s     ");
     
    /*
     lcd.print("Pulses:");
