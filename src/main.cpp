@@ -55,7 +55,7 @@ float wheelCircumference  = 0.299708;//wheelDiameterMeters * 3.14159f; // meters
 
 // Direction: +1 for forward, -1 for reverse
 volatile int direction = 1;
-bool sent = false;
+//bool sent = false;
 
 
 // -------------------- SETUP --------------------
@@ -90,30 +90,34 @@ void setup() {
     /*lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("Ethernet Failed");*/
-    return;
-  }
-  Serial.println("[CellNetL2] Waiting for Link");
-  if(!s_eth_link.waitForUp(5000)){
-    Serial.println("[CellNetL2] Link is not ready");
+    //return;
+  } else {
+    Serial.println("[CellNetL2] Waiting for Link");
+    if(!s_eth_link.waitForUp(5000)){
+      Serial.println("[CellNetL2] Link is not ready");
     /*lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("No ETH Link");
     delay(250);
     lcd.clear();*/
-    return;
+    //return;
+    //CONVEYOR_SPEED is a layer-2 broadcast. a missing address must not skip the node, or the belt speed is never sent
+    }
+    if(s_l2_transport.attachEthHandle(s_eth_link.getEthHandle()) != ESP_OK || !s_l2_node.begin()) {
+      Serial.println("[CellNetL2] Node initialization failed");
+      /*lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("CellNet failed");
+      delay(250);
+      lcd.clear();*/
+    } else {
+      cellNetReady = true;
+      Serial.println("[CellNetl2] Conveyor Node 0x02 ready");
+    }
   }
-  s_l2_transport.attachEthHandle(s_eth_link.getEthHandle());
-  if (!s_l2_node.begin()) {
-    Serial.println("[CellNetL2] Node initialization failed");
-    /*lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("CellNet failed");
-    delay(250);
-    lcd.clear();*/
-    return;
-  }
-  cellNetReady = true;
-  Serial.println("[CellNetl2] Conveyor node 0x02 ready");
+    //return;
+  //cellNetReady = true;
+  //Serial.println("[CellNetl2] Conveyor node 0x02 ready");
   /*lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Network Ready");
@@ -214,20 +218,20 @@ void loop() {
     //bool sent = false;
     float speedMmS = linearSpeed *1000.0f; //convert speed from m/s to mm/s?
     if (cellNetReady){
-
-      bool sent = s_l2_node.sendConveyorSpeed(speedMmS, distanceTraveled, currentCount);
+      
+      const bool sent = s_l2_node.sendConveyorSpeed(speedMmS, distanceTraveled, currentCount);
       //print_statement_counter++;
-      if (print_statement_counter%4 == 0)
+      if(sent)
       {
-        if (DoSerialPrint){
-        Serial.println("[CellNetL2] message sent!");
+        if (print_statement_counter%4 == 0 && DoSerialPrint)
+        {
+          Serial.println("[CellNetL2] message sent!");
         }
-      }
       print_statement_counter++;
-    }
-    if(!sent && DoSerialPrint){
+    } else if (DoSerialPrint){
       Serial.println("[CellNetL2] CONVEYOR_SPEED send failure");
     }
+  }
     
     previousCount = currentCount;
     previousTime = currentTime;
