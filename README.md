@@ -1,14 +1,8 @@
-## Files Structure 
-mqtt_utils.cpp -- contains the utlis for usesd for all the mqtt features.
-velmeter_utils.cpp --  
+## Project Overview
+This project uses a rotary encoder and a WT32-ETH01 microcontroller to measure conveyor speed in m/s and distance travelled in meters. Communication occurs over ethernet using the CellNetL2 library.
 
-
-
-
-
-
-## WT32-ETH01 MQTT Client Node Setup
-This repository provides a basic setup for an MQTT client node designed to communicate over TCP using the WT32-ETH01 module.
+## Calculation
+The conveyor speed is calculated by determining the change in encoder counts over a measured period of time. 
 
 ## Entering Programming Mode on the WT32-ETH01
 Putting the WT32-ETH01 into programming mode can be a little tricky the first time, but once you've done it, it's straightforward.
